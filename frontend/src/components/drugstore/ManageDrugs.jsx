@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useAuth } from '../../context/AuthContext';
 import {
   FiPlus,
   FiEdit2,
@@ -22,18 +23,61 @@ const ManageDrugs = () => {
     price: '',
     expiry_date: ''
   });
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchDrugs();
-  }, []);
+    // Reset the Authorization header explicitly with a slight delay
+    setTimeout(() => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        console.log('ManageDrugs: Setting Authorization header before API calls');
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token.trim()}`;
+      }
+      
+      if (user) {
+        fetchDrugs();
+      }
+    }, 100);
+  }, [user]);
 
   const fetchDrugs = async () => {
     try {
-      const response = await axios.get('http://localhost:5001/api/drugs');
+      setLoading(true);
+      setError('');
+      
+      // Debug token
+      const token = localStorage.getItem('token');
+      console.log('ManageDrugs: Token exists:', token ? 'Yes' : 'No');
+      console.log('ManageDrugs: Token in axios defaults:', axios.defaults.headers.common['Authorization'] ? 'Yes' : 'No');
+      
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        setLoading(false);
+        return;
+      }
+      
+      // Clean the token and set headers directly
+      const cleanToken = token.trim();
+      console.log('ManageDrugs: Clean token length:', cleanToken.length);
+      
+      // Set headers directly for this request
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      console.log('ManageDrugs: Fetching drugs...');
+      const response = await axios.get('/api/drugs', { headers });
+      console.log('ManageDrugs: Successfully fetched drugs:', response.data.length);
       setDrugs(response.data);
     } catch (err) {
-      setError('Failed to fetch drugs');
       console.error('Error fetching drugs:', err);
+      if (err.response) {
+        console.error('API error status:', err.response.status);
+        console.error('API error data:', err.response.data);
+        setError(`Error: ${err.response.data.message || 'Failed to fetch drugs'}`);
+      } else if (err.request) {
+        setError('Server not responding. Please check your connection and try again.');
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -42,11 +86,30 @@ const ManageDrugs = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      if (editingDrug) {
-        await axios.put(`http://localhost:5001/api/drugs/${editingDrug.id}`, formData);
-      } else {
-        await axios.post('http://localhost:5001/api/drugs', formData);
+      setError('');
+      
+      // Get token directly for this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        return;
       }
+      
+      // Clean the token and set headers directly
+      const cleanToken = token.trim();
+      
+      // Set headers directly for this request
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      console.log(`ManageDrugs: ${editingDrug ? 'Updating' : 'Creating'} drug ${formData.name}`);
+      
+      if (editingDrug) {
+        await axios.patch(`/api/drugs/${editingDrug.id}`, formData, { headers });
+      } else {
+        await axios.post('/api/drugs', formData, { headers });
+      }
+      
+      console.log('ManageDrugs: Drug saved successfully');
       setIsModalOpen(false);
       setEditingDrug(null);
       setFormData({
@@ -59,7 +122,15 @@ const ManageDrugs = () => {
       fetchDrugs();
     } catch (err) {
       console.error('Error saving drug:', err);
-      setError('Failed to save drug');
+      if (err.response) {
+        console.error('API error status:', err.response.status);
+        console.error('API error data:', err.response.data);
+        setError(`Error: ${err.response.data.message || 'Failed to save drug'}`);
+      } else if (err.request) {
+        setError('Server not responding. Please check your connection and try again.');
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     }
   };
 
@@ -78,11 +149,36 @@ const ManageDrugs = () => {
   const handleDelete = async (drugId) => {
     if (window.confirm('Are you sure you want to delete this drug?')) {
       try {
-        await axios.delete(`http://localhost:5001/api/drugs/${drugId}`);
+        setError('');
+        
+        // Get token directly for this request
+        const token = localStorage.getItem('token');
+        if (!token) {
+          setError('Authentication token missing. Please login again.');
+          return;
+        }
+        
+        // Clean the token and set headers directly
+        const cleanToken = token.trim();
+        
+        // Set headers directly for this request
+        const headers = { 'Authorization': `Bearer ${cleanToken}` };
+        
+        console.log(`ManageDrugs: Deleting drug with ID ${drugId}`);
+        await axios.delete(`/api/drugs/${drugId}`, { headers });
+        console.log('ManageDrugs: Drug deleted successfully');
         fetchDrugs();
       } catch (err) {
         console.error('Error deleting drug:', err);
-        setError('Failed to delete drug');
+        if (err.response) {
+          console.error('API error status:', err.response.status);
+          console.error('API error data:', err.response.data);
+          setError(`Error: ${err.response.data.message || 'Failed to delete drug'}`);
+        } else if (err.request) {
+          setError('Server not responding. Please check your connection and try again.');
+        } else {
+          setError(`Error: ${err.message}`);
+        }
       }
     }
   };

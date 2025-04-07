@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import { useAuth } from '../../context/AuthContext';
 import {
   FiCalendar,
   FiClock,
@@ -15,23 +16,75 @@ const Dashboard = () => {
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    // Check if user exists before fetching data
+    if (user) {
+      // Explicit delay to ensure token is properly set
+      setTimeout(() => {
+        // Reset the Authorization header explicitly
+        const token = localStorage.getItem('token');
+        if (token) {
+          console.log('Setting Authorization header before fetchData');
+          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        }
+        fetchData();
+      }, 100);
+    }
+  }, [user]);
 
   const fetchData = async () => {
     try {
-      const [appointmentsRes, prescriptionsRes] = await Promise.all([
-        axios.get('http://localhost:5001/api/appointments/doctor/me'),
-        axios.get('http://localhost:5001/api/prescriptions/doctor/me')
-      ]);
-
-      setAppointments(appointmentsRes.data);
-      setPrescriptions(prescriptionsRes.data);
+      // Debug token
+      const token = localStorage.getItem('token');
+      console.log('Doctor Dashboard: Token exists:', token ? 'Yes' : 'No');
+      console.log('Doctor Dashboard: Token in axios defaults:', axios.defaults.headers.common['Authorization'] ? 'Yes' : 'No');
+      
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        setLoading(false);
+        return;
+      }
+      
+      console.log('Doctor Dashboard: Making API requests');
+      
+      // Clean the token and set headers directly
+      const cleanToken = token.trim();
+      console.log('Doctor Dashboard: Clean token length:', cleanToken.length);
+      
+      // Set headers directly for these requests
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      try {
+        // Make API requests separately with better error handling
+        const doctorId = user.id;
+        
+        console.log('Doctor Dashboard: Making request to:', `/api/appointments/doctor/${doctorId}`);
+        const appointmentsRes = await axios.get(`/api/appointments/doctor/${doctorId}`, { headers });
+        console.log('Doctor Dashboard: Successfully fetched appointments:', appointmentsRes.data.length);
+        setAppointments(appointmentsRes.data);
+        
+        const prescriptionsRes = await axios.get(`/api/prescriptions/doctor/${doctorId}`, { headers });
+        console.log('Doctor Dashboard: Successfully fetched prescriptions:', prescriptionsRes.data.length);
+        setPrescriptions(prescriptionsRes.data);
+      } catch (apiError) {
+        console.error('Doctor Dashboard: API request failed:', apiError);
+        if (apiError.response) {
+          console.error('Doctor Dashboard: Error status:', apiError.response.status);
+          console.error('Doctor Dashboard: Error data:', apiError.response.data);
+          setError(`Error: ${apiError.response.data.message || 'Failed to fetch data'}`);
+        } else if (apiError.request) {
+          console.error('Doctor Dashboard: No response received from server');
+          setError('Server not responding. Please check your connection and try again.');
+        } else {
+          console.error('Doctor Dashboard: Request setup error:', apiError.message);
+          setError(`Error: ${apiError.message}`);
+        }
+      }
     } catch (err) {
-      setError('Failed to fetch data');
-      console.error('Error fetching data:', err);
+      console.error('Doctor Dashboard: Unexpected error:', err);
+      setError('An unexpected error occurred. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -216,16 +269,18 @@ const Dashboard = () => {
                     <h4 className="font-medium text-gray-900">
                       {prescription.patient_name}
                     </h4>
-                    <p className="text-sm text-gray-500">
-                      {formatDate(prescription.date)}
-                    </p>
+                    <div className="flex items-center space-x-4">
+                      <div className="text-sm text-gray-500">
+                        {formatDate(prescription.date)}
+                      </div>
+                      <Link
+                        to={`/doctor/prescriptions/${prescription.id}`}
+                        className="text-blue-600 hover:text-blue-800"
+                      >
+                        View Details
+                      </Link>
+                    </div>
                   </div>
-                  <Link
-                    to={`/doctor/prescriptions/${prescription.id}`}
-                    className="text-blue-600 hover:text-blue-800"
-                  >
-                    View Details
-                  </Link>
                 </div>
               ))
             ) : (

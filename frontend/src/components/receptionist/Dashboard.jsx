@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import { useAuth } from '../../context/AuthContext';
 import {
   FiCalendar,
   FiClock,
@@ -16,23 +17,55 @@ const Dashboard = () => {
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { user } = useAuth(); // Get user from context
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (user) { // Only fetch data if user is available
+      fetchData();
+    }
+  }, [user]); // Add user as a dependency
 
   const fetchData = async () => {
     try {
-      const [appointmentsRes, patientsRes] = await Promise.all([
-        axios.get('http://localhost:5001/api/appointments'),
-        axios.get('http://localhost:5001/api/users?role=student')
-      ]);
-
-      setAppointments(appointmentsRes.data);
-      setPatients(patientsRes.data);
+      // Get token from localStorage
+      const token = localStorage.getItem('token');
+      console.log('Dashboard: Token available:', token ? 'Yes' : 'No');
+      
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        setLoading(false);
+        return;
+      }
+      
+      // Log token length to verify it's not malformed
+      console.log('Dashboard: Token length:', token.length);
+      console.log('Dashboard: First 10 chars of token:', token.substring(0, 10));
+      
+      // First try to fetch appointments - using axios with interceptors
+      try {
+        console.log('Dashboard: Fetching appointments');
+        const appointmentsRes = await axios.get('/api/appointments/all');
+        
+        console.log('Dashboard: Successfully fetched appointments:', appointmentsRes.data.length);
+        setAppointments(appointmentsRes.data);
+      } catch (apptErr) {
+        console.error('Dashboard: Failed to fetch appointments:', apptErr.response?.status, apptErr.response?.data);
+      }
+      
+      // Then try to fetch patient data independently - using axios with interceptors
+      try {
+        console.log('Dashboard: Fetching patients');
+        const patientsRes = await axios.get('/api/users?role=student');
+        
+        console.log('Dashboard: Successfully fetched patients:', patientsRes.data.length);
+        setPatients(patientsRes.data);
+      } catch (patErr) {
+        console.error('Dashboard: Failed to fetch patients:', patErr.response?.status, patErr.response?.data);
+      }
+      
     } catch (err) {
-      setError('Failed to fetch data');
-      console.error('Error fetching data:', err);
+      console.error('Dashboard: Unexpected error:', err);
+      setError('An unexpected error occurred. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -98,7 +131,7 @@ const Dashboard = () => {
         </Link>
 
         <Link
-          to="/receptionist/patients"
+          to="/receptionist/view-patients"
           className="bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow"
         >
           <div className="flex items-center justify-between">
@@ -116,7 +149,7 @@ const Dashboard = () => {
         </Link>
 
         <Link
-          to="/receptionist/register"
+          to="/receptionist/register-patient"
           className="bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow"
         >
           <div className="flex items-center justify-between">
@@ -221,7 +254,7 @@ const Dashboard = () => {
                     </div>
                   </div>
                   <Link
-                    to={`/receptionist/patients/${patient.id}`}
+                    to={`/receptionist/view-patients`}
                     className="text-blue-600 hover:text-blue-800"
                   >
                     View Details

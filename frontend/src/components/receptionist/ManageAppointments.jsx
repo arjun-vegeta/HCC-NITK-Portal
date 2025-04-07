@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useAuth } from '../../context/AuthContext';
 import {
   FiCalendar,
   FiClock,
@@ -12,37 +13,77 @@ import {
 
 const ManageAppointments = () => {
   const [appointments, setAppointments] = useState([]);
+  const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchAppointments();
-  }, []);
+    if (user) {
+      fetchAppointments();
+      fetchDoctors();
+    }
+  }, [user]);
 
   const fetchAppointments = async () => {
     try {
-      const response = await axios.get('http://localhost:5001/api/appointments');
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        setLoading(false);
+        return;
+      }
+      
+      console.log('Fetching appointments');
+      const response = await axios.get('/api/appointments/all');
       setAppointments(response.data);
-    } catch (err) {
-      setError('Failed to fetch appointments');
-      console.error('Error fetching appointments:', err);
+    } catch (error) {
+      console.error('Error fetching appointments:', error);
+      setError('Failed to fetch appointments. Please try again later.');
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchDoctors = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        return;
+      }
+      
+      const response = await axios.get('/api/doctors');
+      setDoctors(response.data);
+    } catch (error) {
+      console.error('Error fetching doctors:', error);
+    }
+  };
+
   const handleUpdateStatus = async (appointmentId, status) => {
     try {
-      await axios.patch(`http://localhost:5001/api/appointments/${appointmentId}`, {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        return;
+      }
+
+      await axios.patch(`/api/appointments/${appointmentId}`, {
         status
       });
       setSuccess(`Appointment ${status} successfully`);
       fetchAppointments();
     } catch (err) {
-      setError(err.response?.data?.message || `Failed to ${status} appointment`);
+      if (err.response) {
+        setError(err.response.data.message || `Failed to ${status} appointment`);
+      } else {
+        setError(`Failed to ${status} appointment`);
+      }
     }
   };
 

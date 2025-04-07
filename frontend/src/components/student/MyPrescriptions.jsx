@@ -13,11 +13,46 @@ const MyPrescriptions = () => {
 
   const fetchPrescriptions = async () => {
     try {
-      const response = await axios.get('http://localhost:5001/api/prescriptions/patient/me');
+      setLoading(true);
+      setError('');
+      
+      // Get token directly for this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please log in again.');
+        setLoading(false);
+        return;
+      }
+      
+      // Get user ID from JWT token
+      const userIdMatch = atob(token.split('.')[1]).match(/"userId":(\d+)/);
+      const userId = userIdMatch ? userIdMatch[1] : null;
+      
+      if (!userId) {
+        setError('User ID not found in token. Please log in again.');
+        setLoading(false);
+        return;
+      }
+      
+      console.log('MyPrescriptions: Fetching prescriptions for user ID:', userId);
+      
+      // Set headers explicitly for this request
+      const headers = { 'Authorization': `Bearer ${token}` };
+      
+      const response = await axios.get(`/api/prescriptions/patient/${userId}`, { headers });
+      console.log('MyPrescriptions: Successfully fetched prescriptions:', response.data.length);
       setPrescriptions(response.data);
     } catch (err) {
-      setError('Failed to fetch prescriptions');
       console.error('Error fetching prescriptions:', err);
+      if (err.response) {
+        console.error('API error status:', err.response.status);
+        console.error('API error data:', err.response.data);
+        setError(`Error: ${err.response.data.message || 'Failed to fetch prescriptions'}`);
+      } else if (err.request) {
+        setError('Server not responding. Please check your connection and try again.');
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }

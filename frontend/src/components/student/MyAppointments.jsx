@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useAuth } from '../../context/AuthContext';
 import { FiCalendar, FiClock, FiUser, FiAlertCircle, FiX } from 'react-icons/fi';
 
 const MyAppointments = () => {
@@ -7,18 +8,57 @@ const MyAppointments = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchAppointments();
-  }, []);
+    // Reset the Authorization header explicitly with a slight delay
+    setTimeout(() => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        console.log('MyAppointments: Setting Authorization header before API calls');
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      }
+      
+      if (user) {
+        fetchAppointments();
+      }
+    }, 100);
+  }, [user]);
 
   const fetchAppointments = async () => {
     try {
-      const response = await axios.get('http://localhost:5001/api/appointments/student/me');
+      setLoading(true);
+      setError('');
+      
+      // Get token directly for this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        setLoading(false);
+        return;
+      }
+      
+      // Clean the token and set headers explicitly
+      const cleanToken = token.trim();
+      
+      // Set headers directly for this request
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      console.log(`MyAppointments: Fetching appointments for student ${user.id}`);
+      const response = await axios.get(`/api/appointments/student/${user.id}`, { headers });
+      console.log('MyAppointments: Successfully fetched appointments:', response.data.length);
       setAppointments(response.data);
     } catch (err) {
-      setError('Failed to fetch appointments');
       console.error('Error fetching appointments:', err);
+      if (err.response) {
+        console.error('API error status:', err.response.status);
+        console.error('API error data:', err.response.data);
+        setError(`Error: ${err.response.data.message || 'Failed to fetch appointments'}`);
+      } else if (err.request) {
+        setError('Server not responding. Please check your connection and try again.');
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -26,11 +66,40 @@ const MyAppointments = () => {
 
   const handleCancelAppointment = async (appointmentId) => {
     try {
-      await axios.delete(`http://localhost:5001/api/appointments/${appointmentId}`);
+      setError('');
+      setSuccess('');
+      
+      // Get token directly for this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        return;
+      }
+      
+      // Clean the token and set headers explicitly
+      const cleanToken = token.trim();
+      
+      // Set headers directly for this request
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      console.log(`MyAppointments: Cancelling appointment ${appointmentId}`);
+      await axios.delete(`/api/appointments/${appointmentId}`, { headers });
+      console.log('MyAppointments: Successfully cancelled appointment');
       setSuccess('Appointment cancelled successfully!');
+      
+      // Fetch updated appointments
       fetchAppointments();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to cancel appointment');
+      console.error('Error cancelling appointment:', err);
+      if (err.response) {
+        console.error('API error status:', err.response.status);
+        console.error('API error data:', err.response.data);
+        setError(`Error: ${err.response.data.message || 'Failed to cancel appointment'}`);
+      } else if (err.request) {
+        setError('Server not responding. Please check your connection and try again.');
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     }
   };
 

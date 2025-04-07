@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useAuth } from '../../context/AuthContext';
 import {
   FiUser,
   FiCheck,
@@ -12,31 +13,98 @@ const RecentPrescriptions = () => {
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchPrescriptions();
-  }, []);
+    // Reset the Authorization header explicitly with a slight delay
+    setTimeout(() => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        console.log('RecentPrescriptions: Setting Authorization header before API calls');
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token.trim()}`;
+      }
+      
+      if (user) {
+        fetchPrescriptions();
+      }
+    }, 100);
+  }, [user]);
 
   const fetchPrescriptions = async () => {
     try {
-      const response = await axios.get('http://localhost:5001/api/drugs/recent-prescriptions');
+      setLoading(true);
+      setError('');
+      
+      // Get token directly for this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        setLoading(false);
+        return;
+      }
+      
+      // Clean the token and set headers directly
+      const cleanToken = token.trim();
+      
+      // Set headers directly for this request
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      console.log('RecentPrescriptions: Fetching prescriptions...');
+      const response = await axios.get('/api/prescriptions/pending', { headers });
+      console.log('RecentPrescriptions: Successfully fetched prescriptions:', response.data.length);
       setPrescriptions(response.data);
     } catch (err) {
-      setError('Failed to fetch prescriptions');
       console.error('Error fetching prescriptions:', err);
+      if (err.response) {
+        console.error('API error status:', err.response.status);
+        console.error('API error data:', err.response.data);
+        setError(`Error: ${err.response.data.message || 'Failed to fetch prescriptions'}`);
+      } else if (err.request) {
+        setError('Server not responding. Please check your connection and try again.');
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDispense = async (prescriptionId) => {
+  const handleDispense = async (prescriptionDrugId) => {
     try {
-      await axios.post(`http://localhost:5001/api/drugs/dispense/${prescriptionId}`);
-      // Refresh prescriptions after dispensing
+      setError('');
+      setSuccess('');
+      
+      // Get token directly for this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        return;
+      }
+      
+      // Clean the token and set headers directly
+      const cleanToken = token.trim();
+      
+      // Set headers directly for this request
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      console.log('RecentPrescriptions: Dispensing prescription drug:', prescriptionDrugId);
+      await axios.patch(`/api/drugs/prescription-drugs/${prescriptionDrugId}/sold`, {}, { headers });
+      console.log('RecentPrescriptions: Successfully dispensed prescription drug');
+      
+      setSuccess('Drug dispensed successfully');
       fetchPrescriptions();
     } catch (err) {
       console.error('Error dispensing prescription:', err);
-      setError('Failed to dispense prescription');
+      if (err.response) {
+        console.error('API error status:', err.response.status);
+        console.error('API error data:', err.response.data);
+        setError(`Error: ${err.response.data.message || 'Failed to dispense prescription'}`);
+      } else if (err.request) {
+        setError('Server not responding. Please check your connection and try again.');
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     }
   };
 
@@ -80,13 +148,26 @@ const RecentPrescriptions = () => {
         </p>
       </div>
 
+      {success && (
+        <div className="rounded-md bg-green-50 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <FiCheck className="h-5 w-5 text-green-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-green-800">{success}</h3>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow-sm">
         <div className="p-6">
           <div className="space-y-4">
             {prescriptions.length > 0 ? (
               prescriptions.map((prescription) => (
                 <div
-                  key={prescription.prescription_id}
+                  key={prescription.prescription_drug_id}
                   className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
                 >
                   <div className="flex items-center space-x-4">
@@ -113,7 +194,7 @@ const RecentPrescriptions = () => {
                     </div>
                     {!prescription.is_sold && (
                       <button
-                        onClick={() => handleDispense(prescription.prescription_id)}
+                        onClick={() => handleDispense(prescription.prescription_drug_id)}
                         className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                       >
                         <FiCheck className="h-4 w-4 mr-1" />

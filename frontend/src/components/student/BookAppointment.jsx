@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useAuth } from '../../context/AuthContext';
 import { FiCalendar, FiClock, FiUser, FiAlertCircle } from 'react-icons/fi';
 
 const BookAppointment = () => {
@@ -10,24 +11,67 @@ const BookAppointment = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchDoctors();
-  }, []);
+    // Reset the Authorization header explicitly with a slight delay
+    setTimeout(() => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        console.log('BookAppointment: Setting Authorization header before API calls');
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      }
+      
+      if (user) {
+        fetchDoctors();
+      }
+    }, 100);
+  }, [user]);
 
   useEffect(() => {
     if (selectedDoctor && selectedDate) {
-      fetchSlots();
+      // Small delay to ensure token is set
+      setTimeout(() => {
+        fetchSlots();
+      }, 50);
     }
   }, [selectedDoctor, selectedDate]);
 
   const fetchDoctors = async () => {
     try {
-      const response = await axios.get('http://localhost:5001/api/doctors');
+      setLoading(true);
+      setError('');
+      
+      // Get token directly for this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        setLoading(false);
+        return;
+      }
+      
+      // Clean the token and set headers explicitly
+      const cleanToken = token.trim();
+      console.log('BookAppointment: Clean token length:', cleanToken.length);
+      
+      // Set headers directly for this request
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      console.log('BookAppointment: Fetching doctors...');
+      const response = await axios.get('/api/doctors', { headers });
+      console.log('BookAppointment: Successfully fetched doctors:', response.data.length);
       setDoctors(response.data);
     } catch (err) {
-      setError('Failed to fetch doctors');
       console.error('Error fetching doctors:', err);
+      if (err.response) {
+        console.error('API error status:', err.response.status);
+        console.error('API error data:', err.response.data);
+        setError(`Error: ${err.response.data.message || 'Failed to fetch doctors'}`);
+      } else if (err.request) {
+        setError('Server not responding. Please check your connection and try again.');
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -35,25 +79,79 @@ const BookAppointment = () => {
 
   const fetchSlots = async () => {
     try {
+      setError('');
+      
+      // Get token directly for this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        return;
+      }
+      
+      // Clean the token and set headers explicitly
+      const cleanToken = token.trim();
+      
+      // Set headers directly for this request
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      console.log(`BookAppointment: Fetching slots for doctor ${selectedDoctor} on ${selectedDate}`);
       const response = await axios.get(
-        `http://localhost:5001/api/doctors/${selectedDoctor}/slots?date=${selectedDate}`
+        `/api/doctors/${selectedDoctor}/slots?date=${selectedDate}`,
+        { headers }
       );
+      console.log('BookAppointment: Successfully fetched slots:', response.data.length);
       setSlots(response.data);
     } catch (err) {
-      setError('Failed to fetch available slots');
       console.error('Error fetching slots:', err);
+      if (err.response) {
+        console.error('API error status:', err.response.status);
+        console.error('API error data:', err.response.data);
+        setError(`Error: ${err.response.data.message || 'Failed to fetch available slots'}`);
+      } else if (err.request) {
+        setError('Server not responding. Please check your connection and try again.');
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     }
   };
 
   const handleBookAppointment = async (slotId) => {
     try {
-      await axios.post('http://localhost:5001/api/appointments', {
+      setError('');
+      setSuccess('');
+      
+      // Get token directly for this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        return;
+      }
+      
+      // Clean the token and set headers explicitly
+      const cleanToken = token.trim();
+      
+      // Set headers directly for this request
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      console.log(`BookAppointment: Booking appointment for slot ${slotId}`);
+      await axios.post('/api/appointments', {
         slot_id: slotId
-      });
+      }, { headers });
+      
       setSuccess('Appointment booked successfully!');
-      fetchSlots(); // Refresh slots
+      // Refresh slots after booking
+      fetchSlots();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to book appointment');
+      console.error('Error booking appointment:', err);
+      if (err.response) {
+        console.error('API error status:', err.response.status);
+        console.error('API error data:', err.response.data);
+        setError(`Error: ${err.response.data.message || 'Failed to book appointment'}`);
+      } else if (err.request) {
+        setError('Server not responding. Please check your connection and try again.');
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     }
   };
 

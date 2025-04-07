@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { FiCalendar, FiClock, FiAlertCircle, FiPlus, FiX } from 'react-icons/fi';
+import { FiCalendar, FiClock, FiAlertCircle, FiPlus, FiX, FiCheck } from 'react-icons/fi';
+import { useAuth } from '../../context/AuthContext';
 
 const ManageSlots = () => {
   const [selectedDate, setSelectedDate] = useState('');
@@ -9,22 +10,36 @@ const ManageSlots = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [newSlots, setNewSlots] = useState([]);
+  const { user } = useAuth();
 
   useEffect(() => {
-    if (selectedDate) {
-      fetchSlots();
-    }
-  }, [selectedDate]);
+    // Reset the Authorization header explicitly with a slight delay
+    setTimeout(() => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        console.log('ManageSlots: Setting Authorization header before API calls');
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      }
+      
+      if (user && selectedDate) {
+        fetchSlots();
+      }
+    }, 100);
+  }, [user, selectedDate]);
 
   const fetchSlots = async () => {
     try {
-      const response = await axios.get(
-        `http://localhost:5001/api/doctors/slots?date=${selectedDate}`
-      );
+      setLoading(true);
+      
+      // Get the doctor's ID
+      let doctorId = user.id;
+      
+      const response = await axios.get(`/api/doctors/${doctorId}/slots?date=${selectedDate}`);
       setSlots(response.data);
+      setError(''); // Clear any previous errors
     } catch (err) {
-      setError('Failed to fetch slots');
       console.error('Error fetching slots:', err);
+      setError('Failed to fetch slots. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -55,7 +70,7 @@ const ManageSlots = () => {
         return;
       }
 
-      await axios.post('http://localhost:5001/api/doctors/slots', {
+      await axios.post('/api/doctors/slots', {
         date: selectedDate,
         slots: validSlots
       });
@@ -64,17 +79,21 @@ const ManageSlots = () => {
       setNewSlots([]);
       fetchSlots();
     } catch (err) {
+      console.error('Error adding slots:', err);
       setError(err.response?.data?.message || 'Failed to add slots');
     }
   };
 
   const handleToggleAvailability = async (slotId, isAvailable) => {
     try {
-      await axios.patch(`http://localhost:5001/api/doctors/slots/${slotId}`, {
+      await axios.patch(`/api/doctors/slots/${slotId}`, {
         is_available: !isAvailable
       });
+      
+      setSuccess(`Slot ${isAvailable ? 'disabled' : 'enabled'} successfully!`);
       fetchSlots();
     } catch (error) {
+      console.error('Error updating slot availability:', error);
       setError(error.response?.data?.message || 'Failed to update slot availability');
     }
   };
@@ -86,7 +105,7 @@ const ManageSlots = () => {
     });
   };
 
-  if (loading) {
+  if (loading && selectedDate) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
@@ -120,7 +139,7 @@ const ManageSlots = () => {
         <div className="rounded-md bg-green-50 p-4">
           <div className="flex">
             <div className="flex-shrink-0">
-              <FiAlertCircle className="h-5 w-5 text-green-400" />
+              <FiCheck className="h-5 w-5 text-green-400" />
             </div>
             <div className="ml-3">
               <h3 className="text-sm font-medium text-green-800">{success}</h3>
@@ -199,34 +218,46 @@ const ManageSlots = () => {
         )}
 
         {/* Existing Slots */}
-        {selectedDate && slots.length > 0 && (
+        {selectedDate && (
           <div className="space-y-4">
             <h3 className="text-lg font-medium text-gray-900">Existing Slots</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {slots.map((slot) => (
-                <div
-                  key={slot.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                >
-                  <div className="flex items-center">
-                    <FiClock className="h-4 w-4 text-gray-400 mr-2" />
-                    <span className="text-sm font-medium text-gray-900">
-                      {formatTime(slot.time)}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => handleToggleAvailability(slot.id, slot.is_available)}
-                    className={`px-2 py-1 text-xs font-medium rounded-full ${
+            {slots.length > 0 ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {slots.map((slot) => (
+                  <div
+                    key={slot.id}
+                    className={`p-4 border rounded-lg ${
                       slot.is_available
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-gray-50 border-gray-200'
                     }`}
                   >
-                    {slot.is_available ? 'Available' : 'Unavailable'}
-                  </button>
-                </div>
-              ))}
-            </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <FiClock className="h-5 w-5 text-gray-400 mr-2" />
+                        <span className="text-gray-900 font-medium">
+                          {formatTime(slot.time)}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleToggleAvailability(slot.id, slot.is_available)}
+                        className={`px-3 py-1 text-xs font-medium rounded-full ${
+                          slot.is_available
+                            ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                            : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                        }`}
+                      >
+                        {slot.is_available ? 'Available' : 'Unavailable'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-center py-4">
+                No slots created for this date
+              </p>
+            )}
           </div>
         )}
       </div>

@@ -22,9 +22,10 @@ db.serialize(() => {
 
   // Doctors table (extends users)
   db.run(`CREATE TABLE IF NOT EXISTS doctors (
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
     specialization TEXT,
-    FOREIGN KEY (id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id)
   )`);
 
   // Doctor slots table
@@ -76,13 +77,18 @@ db.serialize(() => {
   )`);
 
   // Prescription drugs (junction table)
+  db.run(`DROP TABLE IF EXISTS prescription_drugs`);
   db.run(`CREATE TABLE IF NOT EXISTS prescription_drugs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     prescription_id INTEGER NOT NULL,
     drug_id INTEGER NOT NULL,
     quantity INTEGER NOT NULL,
-    timing TEXT,
-    duration TEXT,
+    morning BOOLEAN DEFAULT 0,
+    noon BOOLEAN DEFAULT 0,
+    evening BOOLEAN DEFAULT 0,
+    night BOOLEAN DEFAULT 0,
+    notes TEXT,
+    is_sold BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (prescription_id) REFERENCES prescriptions(id),
     FOREIGN KEY (drug_id) REFERENCES drugs(id)

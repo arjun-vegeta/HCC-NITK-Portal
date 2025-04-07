@@ -1,8 +1,59 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 
-// We don't need to set baseURL when using proxy in package.json
-// axios.defaults.baseURL = 'http://localhost:5001';
+// Configure axios defaults - CRA approach only
+// Use process.env.REACT_APP_* variables for Create React App
+const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+axios.defaults.baseURL = apiUrl;
+console.log('Using API URL:', axios.defaults.baseURL);
+
+// Clear any existing interceptors
+axios.interceptors.request.eject(axios.interceptors.request.handlers?.[0]?.id);
+axios.interceptors.response.eject(axios.interceptors.response.handlers?.[0]?.id);
+
+// Set up axios interceptors for handling unauthorized errors
+axios.interceptors.response.use(
+  response => response,
+  error => {
+    // If we get a 401 error, log it but don't clear token yet
+    if (error.response && error.response.status === 401) {
+      console.log('Unauthorized request detected by interceptor');
+      console.log('Request URL:', error.config.url);
+      console.log('Request headers:', JSON.stringify(error.config.headers));
+      
+      // For now, DON'T clear the token to help debug the issue
+      // localStorage.removeItem('token');
+      // delete axios.defaults.headers.common['Authorization'];
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Add request interceptor to add token to all requests
+axios.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      // Ensure headers object exists
+      if (!config.headers) {
+        config.headers = {};
+      }
+      
+      // Clean the token first
+      const cleanToken = token.trim();
+      
+      // Set authorization header directly with proper space after "Bearer"
+      config.headers.Authorization = `Bearer ${cleanToken}`;
+      console.log(`Adding auth token to request: ${config.url} (token length: ${cleanToken.length})`);
+    } else {
+      console.log(`No token available for request: ${config.url}`);
+    }
+    return config;
+  },
+  error => {
+    return Promise.reject(error);
+  }
+);
 
 const AuthContext = createContext({
   user: null,
@@ -35,7 +86,7 @@ export const AuthProvider = ({ children }) => {
     console.log('Checking authentication status...');
     try {
       const token = localStorage.getItem('token');
-      console.log('Token from localStorage:', token ? 'Found' : 'Not found');
+      console.log('Token from localStorage:', token ? `Found (length: ${token.length})` : 'Not found');
       
       if (!token) {
         console.log('No token found, user is not authenticated');
@@ -44,27 +95,33 @@ export const AuthProvider = ({ children }) => {
         return;
       }
       
-      console.log('Setting Authorization header with token');
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      // Clean the token and set the header
+      const cleanToken = token.trim();
+      console.log('Clean token length:', cleanToken.length);
       
+      // Explicitly set the default Authorization header with proper formatting
+      axios.defaults.headers.common['Authorization'] = `Bearer ${cleanToken}`;
+      console.log('Set axios default Authorization header with token from localStorage');
+      
+      // Make a request to /api/auth/me endpoint with explicit headers to guarantee format
       try {
-        console.log('Making request to /api/auth/me endpoint');
-        const response = await axios.get('/api/auth/me');
+        console.log('Making request to /api/auth/me endpoint with token');
+        const response = await axios.get('/api/auth/me', {
+          headers: {
+            'Authorization': `Bearer ${cleanToken}`
+          }
+        });
         
         // Log the full response for debugging
         console.log('Auth check response data:', response.data);
         
         if (!response.data) {
           console.error('Empty response data from /api/auth/me');
-          localStorage.removeItem('token');
-          delete axios.defaults.headers.common['Authorization'];
           throw new Error('Invalid user data received');
         }
         
         if (!response.data.role) {
           console.error('User data missing role:', response.data);
-          localStorage.removeItem('token');
-          delete axios.defaults.headers.common['Authorization'];
           throw new Error('User data missing role');
         }
         
@@ -92,47 +149,37 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       console.log('AuthContext: Login attempt for:', email);
+      console.log('AuthContext: baseURL configured as:', axios.defaults.baseURL);
       setLoading(true); // Set loading to true during login attempt
       
-      // Ensure base URL is correctly set
-      console.log('AuthContext: Using baseURL:', axios.defaults.baseURL);
-      const loginEndpoint = '/api/auth/login';
-      console.log('AuthContext: Posting to:', loginEndpoint);
+      console.log('AuthContext: About to make POST request to /api/auth/login');
+      const response = await axios.post('/api/auth/login', { email, password });
+      console.log('AuthContext: Login response status:', response.status);
+      console.log('AuthContext: Login response data:', response.data);
       
-      const response = await axios.post(loginEndpoint, { email, password });
-      
-      // Log the full response for debugging
-      console.log('AuthContext: Login response:', response.data);
-      
-      if (!response.data) {
-        console.error('AuthContext: Empty response data');
-        throw new Error('Empty response from server');
-      }
-      
-      if (!response.data.token || !response.data.user) {
+      if (!response.data || !response.data.token || !response.data.user) {
         console.error('AuthContext: Invalid response format:', response.data);
         throw new Error('Invalid response from server');
       }
       
+      if (!response.data.user.role) {
+        console.error('AuthContext: User role missing in response:', response.data.user);
+        throw new Error('User role missing in server response');
+      }
+      
       const { token, user } = response.data;
       
-      // Verify that user has a valid role
-      if (!user.role) {
-        console.error('AuthContext: User missing role:', user);
-        throw new Error('Account role is missing. Please contact administrator.');
-      }
-      
-      // Verify that role is one of the valid roles
-      const validRoles = ['student', 'doctor', 'receptionist', 'drugstore_manager'];
-      if (!validRoles.includes(user.role)) {
-        console.error('AuthContext: Invalid user role:', user.role);
-        throw new Error('Invalid account role. Please contact administrator.');
-      }
+      // Clean the token before storing
+      const cleanToken = token.trim();
       
       // Store token and update state
-      console.log('AuthContext: Storing token and updating user state', user);
-      localStorage.setItem('token', token);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      console.log('AuthContext: Storing token of length:', cleanToken.length);
+      localStorage.setItem('token', cleanToken);
+      
+      // Explicitly set the default Authorization header
+      axios.defaults.headers.common['Authorization'] = `Bearer ${cleanToken}`;
+      console.log('AuthContext: Set axios default Authorization header');
+      
       setUser(user);
       
       return user;
@@ -142,7 +189,9 @@ export const AuthProvider = ({ children }) => {
         console.error('AuthContext: Response status:', error.response.status);
         console.error('AuthContext: Response data:', error.response.data);
       } else if (error.request) {
-        console.error('AuthContext: No response received:', error.request);
+        console.error('AuthContext: No response received, request was:', error.request);
+      } else {
+        console.error('AuthContext: Error setting up request:', error.message);
       }
       throw error;
     } finally {
@@ -153,8 +202,10 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     console.log('Logging out user');
     localStorage.removeItem('token');
-    delete axios.defaults.headers.common['Authorization'];
     setUser(null);
+    
+    // Optionally force redirect to login
+    // window.location.href = '/login';
   };
 
   return (

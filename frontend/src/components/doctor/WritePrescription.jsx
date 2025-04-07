@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { FiUser, FiPackage, FiAlertCircle, FiPlus, FiX } from 'react-icons/fi';
+import { FiUser, FiPackage, FiAlertCircle, FiPlus, FiX, FiCheck } from 'react-icons/fi';
+import { useAuth } from '../../context/AuthContext';
 
 const WritePrescription = () => {
   const [patients, setPatients] = useState([]);
@@ -11,23 +12,67 @@ const WritePrescription = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    // Reset the Authorization header explicitly with a slight delay
+    setTimeout(() => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        console.log('WritePrescription: Setting Authorization header before API calls');
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      }
+      
+      if (user) {
+        fetchData();
+      }
+    }, 100);
+  }, [user]);
 
   const fetchData = async () => {
     try {
-      const [patientsRes, drugsRes] = await Promise.all([
-        axios.get('http://localhost:5001/api/users?role=student'),
-        axios.get('http://localhost:5001/api/drugs')
-      ]);
+      setLoading(true);
+      setError(''); // Clear any previous errors
+      
+      // Get token directly for this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please log in again.');
+        setLoading(false);
+        return;
+      }
+      
+      // Set headers explicitly for this request
+      const headers = { 'Authorization': `Bearer ${token}` };
+      console.log('WritePrescription: Making API requests with token');
+      
+      try {
+        // Make parallel requests
+        const [patientsRes, drugsRes] = await Promise.all([
+          axios.get('/api/users?role=student', { headers }),
+          axios.get('/api/drugs', { headers })
+        ]);
 
-      setPatients(patientsRes.data);
-      setDrugs(drugsRes.data);
+        console.log('WritePrescription: Patients data received:', patientsRes.data.length);
+        console.log('WritePrescription: Drugs data received:', drugsRes.data.length);
+        
+        setPatients(patientsRes.data);
+        setDrugs(drugsRes.data);
+      } catch (apiError) {
+        console.error('Error fetching data:', apiError);
+        if (apiError.response) {
+          console.error('API error status:', apiError.response.status);
+          console.error('API error data:', apiError.response.data);
+          setError(`Error: ${apiError.response.data.message || 'Failed to fetch data'}`);
+        } else if (apiError.request) {
+          setError('Server not responding. Please check your connection and try again.');
+        } else {
+          setError(`Error: ${apiError.message}`);
+        }
+      }
     } catch (err) {
-      setError('Failed to fetch data');
-      console.error('Error fetching data:', err);
+      console.error('Unexpected error:', err);
+      setError('An unexpected error occurred. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -79,19 +124,47 @@ const WritePrescription = () => {
         setError('Please select at least one medication');
         return;
       }
-
-      await axios.post('http://localhost:5001/api/prescriptions', {
+      
+      // Clear previous messages
+      setError('');
+      setSuccess('');
+      
+      // Show loading state
+      setLoading(true);
+      
+      console.log('Submitting prescription:', {
         patient_id: selectedPatient,
-        notes,
+        doctor_id: user.id,
         drugs: validDrugs
       });
 
-      setSuccess('Prescription created successfully!');
+      const response = await axios.post('/api/prescriptions', {
+        patient_id: selectedPatient,
+        doctor_id: user.id,
+        notes,
+        drugs: validDrugs
+      });
+      
+      console.log('Prescription created:', response.data);
+      
+      // Reset form
       setSelectedPatient('');
       setNotes('');
       setPrescriptionDrugs([]);
+      
+      // Show success message
+      setSuccess('Prescription created successfully!');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create prescription');
+      console.error('Error creating prescription:', err);
+      if (err.response && err.response.data && err.response.data.message) {
+        setError(`Error: ${err.response.data.message}`);
+      } else if (err.response && err.response.data && err.response.data.errors) {
+        setError(`Validation error: ${err.response.data.errors[0].msg}`);
+      } else {
+        setError('Failed to create prescription. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -129,7 +202,7 @@ const WritePrescription = () => {
         <div className="rounded-md bg-green-50 p-4">
           <div className="flex">
             <div className="flex-shrink-0">
-              <FiAlertCircle className="h-5 w-5 text-green-400" />
+              <FiCheck className="h-5 w-5 text-green-400" />
             </div>
             <div className="ml-3">
               <h3 className="text-sm font-medium text-green-800">{success}</h3>
@@ -198,10 +271,8 @@ const WritePrescription = () => {
                 key={index}
                 className="border rounded-lg p-4 space-y-4"
               >
-                <div className="flex items-center justify-between">
-                  <h4 className="font-medium text-gray-900">
-                    Medication {index + 1}
-                  </h4>
+                <div className="flex justify-between">
+                  <h4 className="text-sm font-medium text-gray-900">Medication #{index + 1}</h4>
                   <button
                     onClick={() => handleRemoveDrug(index)}
                     className="text-red-600 hover:text-red-800"
@@ -213,7 +284,7 @@ const WritePrescription = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">
-                      Select Drug
+                      Select Medication
                     </label>
                     <div className="mt-1 relative rounded-md shadow-sm">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -224,10 +295,10 @@ const WritePrescription = () => {
                         onChange={(e) => handleDrugChange(index, 'drug_id', e.target.value)}
                         className="block w-full pl-10 pr-3 py-2 border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
                       >
-                        <option value="">Select a drug</option>
+                        <option value="">Select a medication</option>
                         {drugs.map((d) => (
                           <option key={d.id} value={d.id}>
-                            {d.name} (Available: {d.quantity})
+                            {d.name}
                           </option>
                         ))}
                       </select>
@@ -252,23 +323,43 @@ const WritePrescription = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Timing
                   </label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {['morning', 'noon', 'evening', 'night'].map((time) => (
-                      <label
-                        key={time}
-                        className="flex items-center space-x-2"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={drug[time]}
-                          onChange={(e) => handleDrugChange(index, time, e.target.checked)}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <span className="text-sm text-gray-700 capitalize">
-                          {time}
-                        </span>
-                      </label>
-                    ))}
+                  <div className="flex flex-wrap gap-3">
+                    <label className="inline-flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={drug.morning}
+                        onChange={(e) => handleDrugChange(index, 'morning', e.target.checked)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Morning</span>
+                    </label>
+                    <label className="inline-flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={drug.noon}
+                        onChange={(e) => handleDrugChange(index, 'noon', e.target.checked)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Noon</span>
+                    </label>
+                    <label className="inline-flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={drug.evening}
+                        onChange={(e) => handleDrugChange(index, 'evening', e.target.checked)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Evening</span>
+                    </label>
+                    <label className="inline-flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={drug.night}
+                        onChange={(e) => handleDrugChange(index, 'night', e.target.checked)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Night</span>
+                    </label>
                   </div>
                 </div>
 
@@ -281,23 +372,21 @@ const WritePrescription = () => {
                     value={drug.notes}
                     onChange={(e) => handleDrugChange(index, 'notes', e.target.value)}
                     className="mt-1 block w-full border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
-                    placeholder="Add any specific instructions for this medication..."
+                    placeholder="Special instructions (e.g., after meal)"
                   />
                 </div>
               </div>
             ))}
           </div>
-        </div>
 
-        {/* Submit Button */}
-        <div>
-          <button
-            onClick={handleSubmit}
-            disabled={!selectedPatient || prescriptionDrugs.length === 0}
-            className="w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Create Prescription
-          </button>
+          {prescriptionDrugs.length > 0 && (
+            <button
+              onClick={handleSubmit}
+              className="w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Create Prescription
+            </button>
+          )}
         </div>
       </div>
     </div>

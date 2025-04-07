@@ -39,6 +39,9 @@ const Sidebar = () => {
         return [
           { path: '/receptionist', label: 'Dashboard', icon: FiHome },
           { path: '/receptionist/users', label: 'Manage Users', icon: FiUsers },
+          { path: '/receptionist/appointments', label: 'Appointments', icon: FiCalendar },
+          { path: '/receptionist/register-patient', label: 'Register Patient', icon: FiUsers },
+          { path: '/receptionist/view-patients', label: 'Patients', icon: FiUsers },
         ];
       default:
         return [];

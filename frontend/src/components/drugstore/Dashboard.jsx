@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import { useAuth } from '../../context/AuthContext';
 import {
   FiHome,
   FiFileText,
@@ -15,23 +16,70 @@ const Dashboard = () => {
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    // Reset the Authorization header explicitly with a slight delay
+    setTimeout(() => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        console.log('Drugstore Dashboard: Setting Authorization header before API calls');
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token.trim()}`;
+      }
+      
+      if (user) {
+        fetchData();
+      }
+    }, 100);
+  }, [user]);
 
   const fetchData = async () => {
     try {
-      const [drugsRes, prescriptionsRes] = await Promise.all([
-        axios.get('http://localhost:5001/api/drugs'),
-        axios.get('http://localhost:5001/api/drugs/recent-prescriptions')
-      ]);
-
-      setDrugs(drugsRes.data);
-      setPrescriptions(prescriptionsRes.data);
+      setLoading(true);
+      setError('');
+      
+      // Debug token
+      const token = localStorage.getItem('token');
+      console.log('Drugstore Dashboard: Token exists:', token ? 'Yes' : 'No');
+      console.log('Drugstore Dashboard: Token in axios defaults:', axios.defaults.headers.common['Authorization'] ? 'Yes' : 'No');
+      
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        setLoading(false);
+        return;
+      }
+      
+      console.log('Drugstore Dashboard: Making API requests');
+      
+      // Clean the token and set headers directly
+      const cleanToken = token.trim();
+      console.log('Drugstore Dashboard: Clean token length:', cleanToken.length);
+      
+      // Set headers directly for these requests
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      try {
+        const [prescriptionsRes, drugsRes] = await Promise.all([
+          axios.get('/api/prescriptions/pending', { headers }),
+          axios.get('/api/drugs', { headers })
+        ]);
+        
+        console.log('Drugstore Dashboard: Successfully fetched prescriptions:', prescriptionsRes.data.length);
+        console.log('Drugstore Dashboard: Successfully fetched drugs:', drugsRes.data.length);
+        
+        setPrescriptions(prescriptionsRes.data);
+        setDrugs(drugsRes.data);
+      } catch (apiError) {
+        console.error('API Error:', apiError);
+        if (apiError.response) {
+          setError(apiError.response.data.message || 'Failed to fetch data');
+        } else {
+          setError('Server not responding. Please check your connection.');
+        }
+      }
     } catch (err) {
-      setError('Failed to fetch data');
-      console.error('Error fetching data:', err);
+      console.error('Unexpected error:', err);
+      setError('An unexpected error occurred. Please try again later.');
     } finally {
       setLoading(false);
     }

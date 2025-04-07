@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { Component } from 'react';
 
 // Layout components
 import Navbar from './components/layout/Navbar';
@@ -19,6 +20,7 @@ import DoctorDashboard from './components/doctor/Dashboard';
 import ManageSlots from './components/doctor/ManageSlots';
 import Appointments from './components/doctor/Appointments';
 import WritePrescription from './components/doctor/WritePrescription';
+import PrescriptionDetails from './components/doctor/PrescriptionDetails';
 
 // Drugstore components
 import DrugstoreDashboard from './components/drugstore/Dashboard';
@@ -28,9 +30,63 @@ import RecentPrescriptions from './components/drugstore/RecentPrescriptions';
 // Receptionist components
 import ReceptionistDashboard from './components/receptionist/Dashboard';
 import ManageUsers from './components/receptionist/ManageUsers';
+import ManageAppointments from './components/receptionist/ManageAppointments';
+import RegisterPatient from './components/receptionist/RegisterPatient';
+import ViewPatients from './components/receptionist/ViewPatients';
 
 // Context
 import { useAuth } from './context/AuthContext';
+
+// Proper React Error Boundary Component - CRA compatible
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { 
+      hasError: false,
+      error: null 
+    };
+  }
+
+  static getDerivedStateFromError(error) {
+    // Update state so the next render will show the fallback UI
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    // You can log the error to an error reporting service
+    console.error('Error caught by ErrorBoundary:', error);
+    console.error('Error info:', errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-red-50 p-4">
+          <div className="bg-white rounded-lg shadow-md p-6 max-w-lg w-full">
+            <h2 className="text-xl font-bold text-red-700 mb-4">Something went wrong</h2>
+            <p className="text-gray-700 mb-4">
+              The application encountered an unexpected error. Try refreshing the page or
+              clearing your browser cache.
+            </p>
+            {this.state.error && (
+              <div className="bg-gray-100 p-3 rounded text-sm font-mono overflow-auto max-h-40">
+                {this.state.error.toString()}
+              </div>
+            )}
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 // Protected Route component
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -107,136 +163,163 @@ function App() {
   const { user } = useAuth();
 
   return (
-    <Router>
-      <div className="min-h-screen bg-gray-100">
-        {user && <Navbar />}
-        <div className="flex">
-          {user && <Sidebar />}
-          <main className="flex-1 p-6">
-            <Routes>
-              {/* Auth routes */}
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
+    <ErrorBoundary>
+      <Router>
+        <div className="min-h-screen bg-gray-100">
+          {user && <Navbar />}
+          <div className="flex">
+            {user && <Sidebar />}
+            <main className="flex-1 p-6">
+              <Routes>
+                {/* Auth routes */}
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
 
-              {/* Student routes */}
-              <Route
-                path="/student"
-                element={
-                  <ProtectedRoute allowedRoles={['student']}>
-                    <StudentDashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/student/book-appointment"
-                element={
-                  <ProtectedRoute allowedRoles={['student']}>
-                    <BookAppointment />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/student/appointments"
-                element={
-                  <ProtectedRoute allowedRoles={['student']}>
-                    <MyAppointments />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/student/prescriptions"
-                element={
-                  <ProtectedRoute allowedRoles={['student']}>
-                    <MyPrescriptions />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Student routes */}
+                <Route
+                  path="/student"
+                  element={
+                    <ProtectedRoute allowedRoles={['student']}>
+                      <StudentDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/student/book-appointment"
+                  element={
+                    <ProtectedRoute allowedRoles={['student']}>
+                      <BookAppointment />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/student/appointments"
+                  element={
+                    <ProtectedRoute allowedRoles={['student']}>
+                      <MyAppointments />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/student/prescriptions"
+                  element={
+                    <ProtectedRoute allowedRoles={['student']}>
+                      <MyPrescriptions />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Doctor routes */}
-              <Route
-                path="/doctor"
-                element={
-                  <ProtectedRoute allowedRoles={['doctor']}>
-                    <DoctorDashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/doctor/slots"
-                element={
-                  <ProtectedRoute allowedRoles={['doctor']}>
-                    <ManageSlots />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/doctor/appointments"
-                element={
-                  <ProtectedRoute allowedRoles={['doctor']}>
-                    <Appointments />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/doctor/prescriptions"
-                element={
-                  <ProtectedRoute allowedRoles={['doctor']}>
-                    <WritePrescription />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Doctor routes */}
+                <Route
+                  path="/doctor"
+                  element={
+                    <ProtectedRoute allowedRoles={['doctor']}>
+                      <DoctorDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/doctor/slots"
+                  element={
+                    <ProtectedRoute allowedRoles={['doctor']}>
+                      <ManageSlots />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/doctor/appointments"
+                  element={
+                    <ProtectedRoute allowedRoles={['doctor']}>
+                      <Appointments />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/doctor/prescriptions"
+                  element={
+                    <ProtectedRoute allowedRoles={['doctor']}>
+                      <WritePrescription />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="/doctor/prescriptions/:prescriptionId" element={<PrescriptionDetails />} />
 
-              {/* Drugstore routes */}
-              <Route
-                path="/drugstore"
-                element={
-                  <ProtectedRoute allowedRoles={['drugstore_manager']}>
-                    <DrugstoreDashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/drugstore/drugs"
-                element={
-                  <ProtectedRoute allowedRoles={['drugstore_manager']}>
-                    <ManageDrugs />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/drugstore/prescriptions"
-                element={
-                  <ProtectedRoute allowedRoles={['drugstore_manager']}>
-                    <RecentPrescriptions />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Drugstore routes */}
+                <Route
+                  path="/drugstore"
+                  element={
+                    <ProtectedRoute allowedRoles={['drugstore_manager']}>
+                      <DrugstoreDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/drugstore/drugs"
+                  element={
+                    <ProtectedRoute allowedRoles={['drugstore_manager']}>
+                      <ManageDrugs />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/drugstore/prescriptions"
+                  element={
+                    <ProtectedRoute allowedRoles={['drugstore_manager']}>
+                      <RecentPrescriptions />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Receptionist routes */}
-              <Route
-                path="/receptionist"
-                element={
-                  <ProtectedRoute allowedRoles={['receptionist']}>
-                    <ReceptionistDashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/receptionist/users"
-                element={
-                  <ProtectedRoute allowedRoles={['receptionist']}>
-                    <ManageUsers />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Receptionist routes */}
+                <Route
+                  path="/receptionist"
+                  element={
+                    <ProtectedRoute allowedRoles={['receptionist']}>
+                      <ReceptionistDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/receptionist/users"
+                  element={
+                    <ProtectedRoute allowedRoles={['receptionist']}>
+                      <ManageUsers />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/receptionist/appointments"
+                  element={
+                    <ProtectedRoute allowedRoles={['receptionist']}>
+                      <ManageAppointments />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/receptionist/register-patient"
+                  element={
+                    <ProtectedRoute allowedRoles={['receptionist']}>
+                      <RegisterPatient />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/receptionist/view-patients"
+                  element={
+                    <ProtectedRoute allowedRoles={['receptionist']}>
+                      <ViewPatients />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Default route */}
-              <Route path="/" element={<DefaultRoute />} />
-            </Routes>
-          </main>
+                {/* Default route */}
+                <Route path="/" element={<DefaultRoute />} />
+              </Routes>
+            </main>
+          </div>
         </div>
-      </div>
-    </Router>
+      </Router>
+    </ErrorBoundary>
   );
 }
 

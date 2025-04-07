@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useAuth } from '../../context/AuthContext';
 import {
   FiFileText,
   FiCheck,
@@ -14,40 +15,135 @@ const ProcessPrescriptions = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchPrescriptions();
-  }, []);
+    // Reset the Authorization header explicitly with a slight delay
+    setTimeout(() => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        console.log('ProcessPrescriptions: Setting Authorization header before API calls');
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token.trim()}`;
+      }
+      
+      if (user) {
+        fetchPrescriptions();
+      }
+    }, 100);
+  }, [user]);
 
   const fetchPrescriptions = async () => {
     try {
-      const response = await axios.get('http://localhost:5001/api/drugs/prescriptions');
+      setLoading(true);
+      setError('');
+      
+      // Get token directly for this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        setLoading(false);
+        return;
+      }
+      
+      // Clean the token and set headers directly
+      const cleanToken = token.trim();
+      
+      // Set headers directly for this request
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      console.log('ProcessPrescriptions: Fetching prescriptions...');
+      const response = await axios.get('/api/prescriptions/pending', { headers });
+      console.log('ProcessPrescriptions: Successfully fetched prescriptions:', response.data.length);
       setPrescriptions(response.data);
     } catch (err) {
-      setError('Failed to fetch prescriptions');
       console.error('Error fetching prescriptions:', err);
+      if (err.response) {
+        console.error('API error status:', err.response.status);
+        console.error('API error data:', err.response.data);
+        setError(`Error: ${err.response.data.message || 'Failed to fetch prescriptions'}`);
+      } else if (err.request) {
+        setError('Server not responding. Please check your connection and try again.');
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDispense = async (prescriptionId) => {
+  const handleDispense = async (prescriptionDrugId) => {
     try {
-      await axios.post(`http://localhost:5001/api/drugs/prescriptions/${prescriptionId}/dispense`);
-      setSuccess('Prescription dispensed successfully');
+      setError('');
+      setSuccess('');
+      
+      // Get token directly for this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        return;
+      }
+      
+      // Clean the token and set headers directly
+      const cleanToken = token.trim();
+      
+      // Set headers directly for this request
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      console.log('ProcessPrescriptions: Dispensing prescription drug:', prescriptionDrugId);
+      await axios.patch(`/api/drugs/prescription-drugs/${prescriptionDrugId}/sold`, {}, { headers });
+      console.log('ProcessPrescriptions: Successfully dispensed prescription drug');
+      
+      setSuccess('Drug dispensed successfully');
       fetchPrescriptions();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to dispense prescription');
+      console.error('Error dispensing prescription:', err);
+      if (err.response) {
+        console.error('API error status:', err.response.status);
+        console.error('API error data:', err.response.data);
+        setError(`Error: ${err.response.data.message || 'Failed to dispense prescription'}`);
+      } else if (err.request) {
+        setError('Server not responding. Please check your connection and try again.');
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     }
   };
 
   const handleReject = async (prescriptionId) => {
     try {
-      await axios.post(`http://localhost:5001/api/drugs/prescriptions/${prescriptionId}/reject`);
+      setError('');
+      setSuccess('');
+      
+      // Get token directly for this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token missing. Please login again.');
+        return;
+      }
+      
+      // Clean the token and set headers directly
+      const cleanToken = token.trim();
+      
+      // Set headers directly for this request
+      const headers = { 'Authorization': `Bearer ${cleanToken}` };
+      
+      console.log('ProcessPrescriptions: Rejecting prescription:', prescriptionId);
+      await axios.patch(`/api/prescriptions/${prescriptionId}/reject`, {}, { headers });
+      console.log('ProcessPrescriptions: Successfully rejected prescription');
+      
       setSuccess('Prescription rejected successfully');
       fetchPrescriptions();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to reject prescription');
+      console.error('Error rejecting prescription:', err);
+      if (err.response) {
+        console.error('API error status:', err.response.status);
+        console.error('API error data:', err.response.data);
+        setError(`Error: ${err.response.data.message || 'Failed to reject prescription'}`);
+      } else if (err.request) {
+        setError('Server not responding. Please check your connection and try again.');
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     }
   };
 
@@ -109,7 +205,7 @@ const ProcessPrescriptions = () => {
             {prescriptions.length > 0 ? (
               prescriptions.map((prescription) => (
                 <div
-                  key={prescription.id}
+                  key={prescription.prescription_drug_id}
                   className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-start justify-between">
@@ -127,14 +223,17 @@ const ProcessPrescriptions = () => {
                           Prescribed by Dr. {prescription.doctor_name}
                         </p>
                         <div className="mt-2 space-y-1">
-                          {prescription.medications.map((med, index) => (
-                            <div key={index} className="flex items-center space-x-2">
-                              <FiPackage className="h-4 w-4 text-gray-400" />
-                              <span className="text-sm text-gray-600">
-                                {med.drug_name} - {med.quantity} units
-                              </span>
-                            </div>
-                          ))}
+                          <div className="flex items-center space-x-2">
+                            <FiPackage className="h-4 w-4 text-gray-400" />
+                            <span className="text-sm text-gray-600">
+                              {prescription.drug_name} - {prescription.quantity} units
+                            </span>
+                          </div>
+                          {prescription.notes && (
+                            <p className="text-sm text-gray-500 mt-1">
+                              Notes: {prescription.notes}
+                            </p>
+                          )}
                         </div>
                         <div className="mt-2 text-sm text-gray-500">
                           Prescribed on {formatDate(prescription.date)}
@@ -142,17 +241,17 @@ const ProcessPrescriptions = () => {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      {prescription.status === 'pending' && (
+                      {!prescription.is_sold && (
                         <>
                           <button
-                            onClick={() => handleDispense(prescription.id)}
+                            onClick={() => handleDispense(prescription.prescription_drug_id)}
                             className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                           >
                             <FiCheck className="h-4 w-4 mr-1" />
                             Dispense
                           </button>
                           <button
-                            onClick={() => handleReject(prescription.id)}
+                            onClick={() => handleReject(prescription.prescription_id)}
                             className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                           >
                             <FiX className="h-4 w-4 mr-1" />
@@ -162,14 +261,12 @@ const ProcessPrescriptions = () => {
                       )}
                       <span
                         className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          prescription.status === 'dispensed'
+                          prescription.is_sold
                             ? 'bg-green-100 text-green-800'
-                            : prescription.status === 'rejected'
-                            ? 'bg-red-100 text-red-800'
                             : 'bg-yellow-100 text-yellow-800'
                         }`}
                       >
-                        {prescription.status.charAt(0).toUpperCase() + prescription.status.slice(1)}
+                        {prescription.is_sold ? 'Dispensed' : 'Pending'}
                       </span>
                     </div>
                   </div>

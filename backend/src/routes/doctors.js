@@ -3,22 +3,45 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const db = require('../database/init');
 const { auth, authorize } = require('../middleware/auth');
-const authMiddleware = authorize(['doctor', 'receptionist']);
+const authMiddleware = [auth, authorize(['doctor', 'receptionist'])];
 
 // Get all doctors
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
-    db.all(`
-      SELECT d.*, u.name, u.email 
-      FROM doctors d 
-      JOIN users u ON d.user_id = u.id
-    `, [], (err, doctors) => {
+    console.log('Fetching doctors...');
+    
+    // First check if the doctors table actually has any records
+    db.get('SELECT COUNT(*) as count FROM doctors', [], (err, result) => {
       if (err) {
-        return res.status(500).json({ message: 'Server error' });
+        console.error('Error checking doctors count:', err);
+        return res.status(500).json({ message: 'Database error checking doctors' });
       }
-      res.json(doctors);
+      
+      console.log('Doctors count:', result.count);
+      
+      // If no doctors exist, return empty array without trying the join
+      if (result.count === 0) {
+        return res.json([]);
+      }
+      
+      // If doctors exist, proceed with the join
+      db.all(`
+        SELECT d.*, u.name, u.email, u.id as user_id
+        FROM doctors d 
+        JOIN users u ON d.id = u.id
+        WHERE u.role = 'doctor'
+      `, [], (err, doctors) => {
+        if (err) {
+          console.error('Error fetching doctors:', err);
+          return res.status(500).json({ message: 'Server error fetching doctors' });
+        }
+        
+        console.log('Successfully fetched doctors:', doctors.length);
+        res.json(doctors);
+      });
     });
   } catch (error) {
+    console.error('Unexpected error in GET /doctors:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -42,7 +65,7 @@ router.post('/slots', authMiddleware, [
       return res.status(400).json({ message: 'Doctor ID is required' });
     }
 
-    const stmt = db.prepare('INSERT INTO slots (doctor_id, date, time, is_available) VALUES (?, ?, ?, 1)');
+    const stmt = db.prepare('INSERT INTO doctor_slots (doctor_id, date, time, is_available) VALUES (?, ?, ?, 1)');
     
     slots.forEach(slot => {
       stmt.run([doctorId, date, slot.time]);
@@ -69,7 +92,7 @@ router.patch('/slots/:slotId', authMiddleware, [
     const { is_available } = req.body;
 
     db.run(
-      'UPDATE slots SET is_available = ? WHERE id = ?',
+      'UPDATE doctor_slots SET is_available = ? WHERE id = ?',
       [is_available, slotId],
       function(err) {
         if (err) {
@@ -97,7 +120,7 @@ router.get('/:doctorId/slots', async (req, res) => {
     }
 
     db.all(
-      'SELECT * FROM slots WHERE doctor_id = ? AND date = ? ORDER BY time',
+      'SELECT * FROM doctor_slots WHERE doctor_id = ? AND date = ? ORDER BY time',
       [doctorId, date],
       (err, slots) => {
         if (err) {
@@ -117,12 +140,12 @@ router.get('/:doctorId/appointments', authMiddleware, async (req, res) => {
     const { doctorId } = req.params;
 
     db.all(`
-      SELECT a.*, s.date, s.time, u.name as patient_name, u.email as patient_email
+      SELECT a.*, ds.date, ds.time, u.name as patient_name, u.email as patient_email
       FROM appointments a
-      JOIN slots s ON a.slot_id = s.id
+      JOIN doctor_slots ds ON a.slot_id = ds.id
       JOIN users u ON a.patient_id = u.id
-      WHERE s.doctor_id = ?
-      ORDER BY s.date, s.time
+      WHERE ds.doctor_id = ?
+      ORDER BY ds.date, ds.time
     `, [doctorId], (err, appointments) => {
       if (err) {
         return res.status(500).json({ message: 'Server error' });
