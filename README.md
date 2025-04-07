@@ -1,4 +1,4 @@
-# Healthcare Appointment Management System
+# Healthcare Center (HCC) Management System
 
 A full-stack web application for managing doctor appointments and patient records. Built with React.js frontend and Node.js backend.
 
@@ -60,24 +60,62 @@ A full-stack web application for managing doctor appointments and patient record
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
+│   │   │   ├── auth/
+│   │   │   │   ├── Login.jsx
+│   │   │   │   └── Register.jsx
 │   │   │   ├── doctor/
-│   │   │   │   └── Appointments.jsx
-│   │   │   ├── patient/
+│   │   │   │   ├── Appointments.jsx
+│   │   │   │   ├── Dashboard.jsx
+│   │   │   │   ├── ManageSlots.jsx
+│   │   │   │   ├── PrescriptionDetails.jsx
+│   │   │   │   └── WritePrescription.jsx
+│   │   │   ├── drugstore/
+│   │   │   │   ├── Dashboard.jsx
+│   │   │   │   ├── ManageDrugs.jsx
+│   │   │   │   ├── ProcessPrescriptions.jsx
+│   │   │   │   └── RecentPrescriptions.jsx
+│   │   │   ├── layout/
+│   │   │   │   ├── Navbar.jsx
+│   │   │   │   └── Sidebar.jsx
 │   │   │   ├── receptionist/
-│   │   │   └── drugstore/
+│   │   │   │   ├── Dashboard.jsx
+│   │   │   │   ├── ManageAppointments.jsx
+│   │   │   │   ├── ManageUsers.jsx
+│   │   │   │   ├── RegisterPatient.jsx
+│   │   │   │   └── ViewPatients.jsx
+│   │   │   └── student/
+│   │   │       ├── BookAppointment.jsx
+│   │   │       ├── Dashboard.jsx
+│   │   │       ├── MyAppointments.jsx
+│   │   │       └── MyPrescriptions.jsx
 │   │   ├── context/
+│   │   │   └── AuthContext.jsx
 │   │   ├── assets/
 │   │   ├── App.jsx
-│   │   └── index.js
+│   │   ├── App.css
+│   │   ├── index.js
+│   │   ├── index.css
+│   │   └── reportWebVitals.js
 │   └── package.json
 │
 ├── backend/
 │   ├── src/
 │   │   ├── routes/
+│   │   │   ├── appointments.js
+│   │   │   ├── auth.js
+│   │   │   ├── doctors.js
+│   │   │   ├── drugs.js
+│   │   │   ├── prescriptions.js
+│   │   │   └── users.js
 │   │   ├── middleware/
+│   │   │   └── auth.js
 │   │   ├── database/
+│   │   │   ├── hcc.db
+│   │   │   ├── hospital.db
+│   │   │   └── init.js
 │   │   └── server.js
-│   └── package.json
+│   ├── package.json
+│   └── package-lock.json
 ```
 
 ## Getting Started
