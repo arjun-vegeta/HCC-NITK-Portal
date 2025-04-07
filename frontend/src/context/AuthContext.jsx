@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 
-// Configure axios defaults
-axios.defaults.baseURL = 'http://localhost:5001';
+// We don't need to set baseURL when using proxy in package.json
+// axios.defaults.baseURL = 'http://localhost:5001';
 
 const AuthContext = createContext({
   user: null,
@@ -56,11 +56,15 @@ export const AuthProvider = ({ children }) => {
         
         if (!response.data) {
           console.error('Empty response data from /api/auth/me');
+          localStorage.removeItem('token');
+          delete axios.defaults.headers.common['Authorization'];
           throw new Error('Invalid user data received');
         }
         
         if (!response.data.role) {
           console.error('User data missing role:', response.data);
+          localStorage.removeItem('token');
+          delete axios.defaults.headers.common['Authorization'];
           throw new Error('User data missing role');
         }
         
@@ -90,15 +94,40 @@ export const AuthProvider = ({ children }) => {
       console.log('AuthContext: Login attempt for:', email);
       setLoading(true); // Set loading to true during login attempt
       
-      const response = await axios.post('/api/auth/login', { email, password });
+      // Ensure base URL is correctly set
+      console.log('AuthContext: Using baseURL:', axios.defaults.baseURL);
+      const loginEndpoint = '/api/auth/login';
+      console.log('AuthContext: Posting to:', loginEndpoint);
+      
+      const response = await axios.post(loginEndpoint, { email, password });
+      
+      // Log the full response for debugging
       console.log('AuthContext: Login response:', response.data);
       
-      if (!response.data || !response.data.token || !response.data.user) {
+      if (!response.data) {
+        console.error('AuthContext: Empty response data');
+        throw new Error('Empty response from server');
+      }
+      
+      if (!response.data.token || !response.data.user) {
         console.error('AuthContext: Invalid response format:', response.data);
         throw new Error('Invalid response from server');
       }
       
       const { token, user } = response.data;
+      
+      // Verify that user has a valid role
+      if (!user.role) {
+        console.error('AuthContext: User missing role:', user);
+        throw new Error('Account role is missing. Please contact administrator.');
+      }
+      
+      // Verify that role is one of the valid roles
+      const validRoles = ['student', 'doctor', 'receptionist', 'drugstore_manager'];
+      if (!validRoles.includes(user.role)) {
+        console.error('AuthContext: Invalid user role:', user.role);
+        throw new Error('Invalid account role. Please contact administrator.');
+      }
       
       // Store token and update state
       console.log('AuthContext: Storing token and updating user state', user);
@@ -110,7 +139,10 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('AuthContext: Login error:', error);
       if (error.response) {
+        console.error('AuthContext: Response status:', error.response.status);
         console.error('AuthContext: Response data:', error.response.data);
+      } else if (error.request) {
+        console.error('AuthContext: No response received:', error.request);
       }
       throw error;
     } finally {

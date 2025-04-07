@@ -117,7 +117,7 @@ router.post('/login', [
 
     db.get('SELECT * FROM users WHERE email = ?', [email], async (err, user) => {
       if (err) {
-        console.error('Database error:', err);
+        console.error('Database error in login:', err);
         return res.status(500).json({ message: 'Server error' });
       }
 
@@ -128,23 +128,36 @@ router.post('/login', [
 
       console.log('User found:', { id: user.id, email: user.email, role: user.role });
       
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) {
-        console.log('Password does not match');
-        return res.status(400).json({ message: 'Invalid credentials' });
-      }
+      try {
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+          console.log('Password does not match for user:', email);
+          return res.status(400).json({ message: 'Invalid credentials' });
+        }
+        
+        // Check if user has a valid role
+        if (!user.role) {
+          console.error('User has no role assigned:', user.id);
+          return res.status(400).json({ message: 'Account role is missing. Please contact administrator.' });
+        }
+        
+        const validRoles = ['student', 'doctor', 'receptionist', 'drugstore_manager'];
+        if (!validRoles.includes(user.role)) {
+          console.error('User has invalid role:', user.role);
+          return res.status(400).json({ message: 'Invalid account role. Please contact administrator.' });
+        }
 
-      console.log('Login successful for:', { id: user.id, email: user.email, role: user.role });
-      
-      const token = jwt.sign(
-        { userId: user.id, role: user.role },
-        JWT_SECRET,
-        { expiresIn: '24h' }
-      );
+        console.log('Login successful for:', { id: user.id, email: user.email, role: user.role });
+        
+        // Create and sign JWT token
+        const token = jwt.sign(
+          { userId: user.id, role: user.role },
+          JWT_SECRET,
+          { expiresIn: '24h' }
+        );
 
-      res.json({
-        token,
-        user: {
+        // Prepare response with user data (excluding password)
+        const userData = {
           id: user.id,
           email: user.email,
           name: user.name,
@@ -152,8 +165,19 @@ router.post('/login', [
           batch: user.batch,
           branch: user.branch,
           specialization: user.specialization
-        }
-      });
+        };
+        
+        console.log('Sending response with user data:', userData);
+
+        // Send success response
+        res.json({
+          token,
+          user: userData
+        });
+      } catch (bcryptError) {
+        console.error('Bcrypt error during password comparison:', bcryptError);
+        return res.status(500).json({ message: 'Error verifying credentials' });
+      }
     });
   } catch (error) {
     console.error('Unhandled error in login:', error);
@@ -173,6 +197,12 @@ router.get('/me', (req, res) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     console.log('Decoded token in /me endpoint:', decoded);
     
+    // Make sure the token contains a userId
+    if (!decoded || !decoded.userId) {
+      console.error('Invalid token format, userId missing:', decoded);
+      return res.status(401).json({ message: 'Invalid token format' });
+    }
+    
     db.get('SELECT * FROM users WHERE id = ?', [decoded.userId], (err, user) => {
       if (err) {
         console.error('Database error in /me endpoint:', err);
@@ -183,8 +213,21 @@ router.get('/me', (req, res) => {
         console.log('User not found with id:', decoded.userId);
         return res.status(401).json({ message: 'User not found' });
       }
-
+      
       console.log('Found user in /me endpoint:', { id: user.id, email: user.email, role: user.role });
+      
+      // Check if role exists and is valid
+      if (!user.role) {
+        console.error('User has no role assigned:', user.id);
+        return res.status(400).json({ message: 'Account role is missing. Please contact administrator.' });
+      }
+      
+      const validRoles = ['student', 'doctor', 'receptionist', 'drugstore_manager'];
+      if (!validRoles.includes(user.role)) {
+        console.error('User has invalid role:', user.role);
+        return res.status(400).json({ message: 'Invalid account role. Please contact administrator.' });
+      }
+      
       // Remove password from response
       const { password, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);

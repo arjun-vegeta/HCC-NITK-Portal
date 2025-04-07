@@ -21,11 +21,12 @@ router.post('/', receptionistAuth, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, password, name, role, batch, branch } = req.body;
+    const { email, password, name, role, batch, branch, specialization } = req.body;
 
     // Check if user already exists
     db.get('SELECT * FROM users WHERE email = ?', [email], async (err, user) => {
       if (err) {
+        console.error('Database error:', err);
         return res.status(500).json({ message: 'Server error' });
       }
 
@@ -37,35 +38,63 @@ router.post('/', receptionistAuth, [
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(password, salt);
 
-      // Insert user
-      db.run(
-        'INSERT INTO users (email, password, name, role, batch, branch) VALUES (?, ?, ?, ?, ?, ?)',
-        [email, hashedPassword, name, role, batch, branch],
-        function(err) {
-          if (err) {
-            return res.status(500).json({ message: 'Server error' });
-          }
+      // Insert user with specialization directly in users table if doctor
+      if (role === 'doctor') {
+        db.run(
+          'INSERT INTO users (email, password, name, role, specialization) VALUES (?, ?, ?, ?, ?)',
+          [email, hashedPassword, name, role, specialization || 'General Medicine'],
+          function(err) {
+            if (err) {
+              console.error('Error inserting doctor user:', err);
+              return res.status(500).json({ message: 'Server error' });
+            }
 
-          // If user is a doctor, create doctor record
-          if (role === 'doctor') {
+            // Create record in doctors table
             db.run(
-              'INSERT INTO doctors (user_id, specialization) VALUES (?, ?)',
-              [this.lastID, req.body.specialization || 'General Medicine']
+              'INSERT INTO doctors (id, specialization) VALUES (?, ?)',
+              [this.lastID, specialization || 'General Medicine'],
+              (err) => {
+                if (err) {
+                  console.error('Error inserting doctor record:', err);
+                  // Continue anyway since user is created
+                }
+              }
             );
-          }
 
-          res.status(201).json({
-            id: this.lastID,
-            email,
-            name,
-            role,
-            batch,
-            branch
-          });
-        }
-      );
+            res.status(201).json({
+              id: this.lastID,
+              email,
+              name,
+              role,
+              specialization
+            });
+          }
+        );
+      } else {
+        // Insert regular user
+        db.run(
+          'INSERT INTO users (email, password, name, role, batch, branch) VALUES (?, ?, ?, ?, ?, ?)',
+          [email, hashedPassword, name, role, batch, branch],
+          function(err) {
+            if (err) {
+              console.error('Error inserting user:', err);
+              return res.status(500).json({ message: 'Server error' });
+            }
+
+            res.status(201).json({
+              id: this.lastID,
+              email,
+              name,
+              role,
+              batch,
+              branch
+            });
+          }
+        );
+      }
     });
   } catch (error) {
+    console.error('Unhandled error in user creation:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -73,7 +102,9 @@ router.post('/', receptionistAuth, [
 // Get all users (receptionist only)
 router.get('/', receptionistAuth, async (req, res) => {
   try {
-    db.all(`
+    const { role } = req.query;
+    
+    let query = `
       SELECT 
         u.id,
         u.email,
@@ -81,17 +112,28 @@ router.get('/', receptionistAuth, async (req, res) => {
         u.role,
         u.batch,
         u.branch,
-        d.specialization
+        u.specialization
       FROM users u
-      LEFT JOIN doctors d ON u.id = d.user_id
-      ORDER BY u.name
-    `, [], (err, users) => {
+    `;
+    
+    const params = [];
+    
+    if (role) {
+      query += ' WHERE u.role = ?';
+      params.push(role);
+    }
+    
+    query += ' ORDER BY u.name';
+    
+    db.all(query, params, (err, users) => {
       if (err) {
+        console.error('Database error in get users:', err);
         return res.status(500).json({ message: 'Server error' });
       }
       res.json(users);
     });
   } catch (error) {
+    console.error('Error in get users route:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -166,33 +208,6 @@ router.delete('/:userId', receptionistAuth, async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
-});
-
-// Get all users (admin only)
-router.get('/', auth, authorize('receptionist'), (req, res) => {
-  const { role } = req.query;
-  
-  let query = 'SELECT * FROM users';
-  const params = [];
-
-  if (role) {
-    query += ' WHERE role = ?';
-    params.push(role);
-  }
-
-  db.all(query, params, (err, users) => {
-    if (err) {
-      return res.status(500).json({ message: 'Server error' });
-    }
-
-    // Remove passwords from response
-    const usersWithoutPasswords = users.map(user => {
-      const { password, ...userWithoutPassword } = user;
-      return userWithoutPassword;
-    });
-
-    res.json(usersWithoutPasswords);
-  });
 });
 
 // Get user by ID
@@ -299,6 +314,50 @@ router.delete('/:id', auth, authorize('receptionist'), (req, res) => {
       res.json({ message: 'User deleted successfully' });
     });
   });
+});
+
+// Update user role (receptionist only)
+router.put('/:id/role', auth, authorize(['receptionist']), [
+  body('role').isIn(['student', 'doctor', 'receptionist', 'drugstore_manager']).withMessage('Invalid role')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { id } = req.params;
+    const { role } = req.body;
+
+    // Check if user exists
+    db.get('SELECT * FROM users WHERE id = ?', [id], (err, user) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ message: 'Server error' });
+      }
+
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      // Update user role
+      db.run('UPDATE users SET role = ? WHERE id = ?', [role, id], function(err) {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ message: 'Server error' });
+        }
+
+        if (this.changes === 0) {
+          return res.status(500).json({ message: 'Failed to update user role' });
+        }
+
+        res.json({ message: 'User role updated successfully', role });
+      });
+    });
+  } catch (error) {
+    console.error('Unhandled error in updating user role:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 module.exports = router; 
